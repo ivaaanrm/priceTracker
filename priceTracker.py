@@ -6,7 +6,7 @@ import unicodedata
 import smtplib, ssl
 import logging 
 import credentials_user
-
+from logs_test import do_logging
 
 sender_email = credentials_user.USER_EMAIL
 receiver_email = credentials_user.RECEIVER_EMAIL
@@ -108,6 +108,7 @@ def update_products(df, ws):
 
 def main():
     # Conexion al spreadsheet de google
+    do_logging("Se ha ejecutado el script")
     worksheet = connect_to_google_sheets(credentials)
     df = pd.DataFrame(worksheet.get_all_records())
     products = update_products(df, worksheet)
