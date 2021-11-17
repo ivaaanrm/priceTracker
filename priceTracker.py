@@ -4,14 +4,20 @@ import requests
 import gspread
 import unicodedata
 import smtplib, ssl
-import logging
+import logging 
 import credentials_user
 
 
-######### Amazon web scraping  #############
+sender_email = credentials_user.USER_EMAIL
+receiver_email = credentials_user.RECEIVER_EMAIL
+password = credentials_user.PASSWORD
+credentials = credentials_user.PATH_CREDENTIALS
+
+
 HEADERS = ({'User-Agent':
             'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36',
             'Accept-Language': 'en-US, en;q=0.5'})
+
 
 # returns (title, price, stars)
 def get_product_info(url):
@@ -25,7 +31,6 @@ def get_product_info(url):
                 stars = soup.find(id='acrPopover').find("span", class_="a-icon-alt").get_text().strip()
             except:
                 stars = None
-            #print(f"Titulo:\n{title}\nPrecio: {price_str}\n{stars}")
         except:
             return None, None, None
         
@@ -58,10 +63,7 @@ def send_email(sender_email, password, receiver_email, message):
 
 # products = ((real_price, target))
 def alert_product_under_target(products):
-    products_below_limit = []
-    for product in products:
-        if product[4]:
-            products_below_limit.append(product)
+    products_below_limit = [product for product in products if product[4]]
 
     if products_below_limit:
         message = "Subject: Alerta de precio!\n\n"
@@ -70,9 +72,8 @@ def alert_product_under_target(products):
             message += f"{title}\n\n"
             message += f"Precio Actual:\t\t{price}€\n"
             message += f"Target:\t\t{target}€\n"
-            # message += f"Descuento:\t\t\t{(1-price/target)*100}"
             message += f"{url}\n\n\n"
-        #print(message)
+
         message = message.encode('utf-8')
         send_email(sender_email, password, receiver_email, message)
 
@@ -86,40 +87,33 @@ def connect_to_google_sheets(credentials):
 
 
 # gets url from the sheet and add the title and price
-def update_products(df):
-    products = set() # maybe no hace falta
+def update_products(df, ws):
     urls = df['urls']
-    # urls = worksheet.col_values(5)[1:] # devuelve las urls de todos los productos del excel
     i  = 0
     for url in urls:
         print(f"scraping product ... {i} ")
         title, price, stars = get_product_info(url)
         df.loc[i, ['producto', 'precio', 'stars']] = [title, price, stars]
-        # print(df.loc[i, ['target']].values == '')
-        # print(f"valor del target:\t{df.loc[i, ['target']].values}")
+    
         if df.loc[i, ['target']].values == '' or float(df.loc[i, ['target']].values) < price:
             df.loc[i, ['under_target']] = False
         else:
             df.loc[i, ['under_target']] = True
         i += 1
-    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
 
+    ws.update([df.columns.values.tolist()] + df.values.tolist())
     return df.values.tolist()
 
 
 
+def main():
+    # Conexion al spreadsheet de google
+    worksheet = connect_to_google_sheets(credentials)
+    df = pd.DataFrame(worksheet.get_all_records())
+    products = update_products(df, worksheet)
+    alert_product_under_target(products)
 
-# Datos para enviar el email
-sender_email = credentials_user.USER_EMAIL
-receiver_email = credentials_user.RECEIVER_EMAIL
-password = credentials_user.PASSWORD
 
-# Conexion al spreadsheet de google
-credentials = '/Users/ivan/Desktop/python/price_tracker/credentials.json'
-worksheet = connect_to_google_sheets(credentials)
-df = pd.DataFrame(worksheet.get_all_records())
 
-products = update_products(df)
-
-print(products)
-alert_product_under_target(products)
+if __name__ == '__main__':
+    main()
